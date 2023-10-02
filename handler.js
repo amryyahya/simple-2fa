@@ -2,31 +2,51 @@ const { User } = require('./config/database.js')
 const { nanoid } = require('nanoid');
 const crypto = require('crypto');
 const { generateTOTP } = require('./totp')
+const jwt = require('jsonwebtoken');
 
 // this two function is actually used as authenticator app in user smartphone, but for praprosal fasteness i made it as web app tool 
 const authenticatorApp = (request, h) => {
-    return h.file('views/authenticator.html')
+    return h.view('authenticator')
 }
 const authenticatorAppResult = (request, h) => {
     const { secretKey } = request.payload;
-    console.log(typeof (secretKey));
     let otp = generateTOTP(secretKey)
     return `<h1>Your OTP is: ${otp}</h1> <br> OTP berganti tiap 30 detik`
 }
 // end of explanation
 
-
-// verify user otp input
 const verifyTwoFactorAuth = async (request, h) => {
-    const { otp,user_id } = request.payload;
-    const user = await User.findByPk(user_id);
-    if (otp===generateTOTP(user.secret_key)) return `<h1>Hello ${user.email}, <br> You've Logged In</h1><p>This Simple Web is not using cookies/session, maybe you will auto logout in view seconds</p>`
+    const {otp,token}=request.payload
+    let data_payload={}
+    jwt.verify(token, "AMRYYAHYA", (err, decoded) => {
+        if (err) {
+            console.error('Token verification failed:', err);
+        } else {
+            console.log('Decoded Token:');
+            data_payload=decoded
+        }
+    });
+    const user = await User.findByPk(data_payload.user_id);
+    if (otp===generateTOTP(user.secret_key)) {
+        h.state('data', { id: user.id,email: user.email, password: user.password });
+        return h.view('dashboard',{user_email: user.email, user_number: user.phone_number})
+    }
     else return '<h1>unauthorized</h1>'
 
 }
 
+const dashboardHandler = async (request, h) => {
+    const value = request.state.data;
+    const user = await User.findByPk(value.id);
+    if (value === undefined) {
+        return h.redirect('/login')
+    } else {
+        return h.view('dashboard',{user_email: user.email, user_number: user.phone_number})
+    }
+}
+
 const loginViewHandler = (request, h) => {
-    return h.file('views/login.html')
+    return h.view('login')
 }
 
 const loginHandler = async (request, h) => {
@@ -43,14 +63,12 @@ const loginHandler = async (request, h) => {
         if (!user) {
             return '<h1>email tidak ditemukan</h1>'
         } if (user.password === hashedPassword) {
-            return `<form action="dashboard" method="post">
-                        <label for="otp">Inputkan OTP</label><br>
-                        <input type="text" name="otp" id="otp"><br><br>
-                        <input type="number" name="user_id" id="user_id" value=${user.id} hidden><br><br>
-                        <input type="submit" value="LOGIN">
-                    </form>
-                    <p>Use this :</p>
-                    <a href="/authenticatorapp" target="_blank">OTP GENERATOR:AUTHENTICATOR APP</a>`
+            const data_payload = {
+                user_id: user.id,
+                user_email: user.email
+            };
+            const token = jwt.sign(data_payload, "AMRYYAHYA", { expiresIn: '5m' });
+            return h.view('otp',{token:token})
         }
         else return '<h1>password salah</h1>$'
     } catch (error) {
@@ -60,17 +78,18 @@ const loginHandler = async (request, h) => {
 }
 
 const registerViewHandler = (request, h) => {
-    return h.file('views/register.html')
+    return h.view('register')
 }
 const registerHandler = async (request, h) => {
     const {
-        email, password
+        email,phone_number, password
     } = request.payload;
-    const secret_key = nanoid(8);
+    const secret_key = nanoid(32);
     const hashedPassword = crypto.createHash('md5').update(password).digest('hex');
     try {
         const user = await User.create({
             email: email,
+            phone_number: phone_number,
             password: hashedPassword,
             secret_key: secret_key,
         });
@@ -81,6 +100,10 @@ const registerHandler = async (request, h) => {
     return true;
 }
 
+const logoutHandler = async (request, h) => {
+    return h.redirect('/login').unstate('data')
+}
+
 module.exports = {
-    loginViewHandler, registerViewHandler, registerHandler, loginHandler, authenticatorApp, authenticatorAppResult, verifyTwoFactorAuth
+    loginViewHandler, registerViewHandler, registerHandler, loginHandler, authenticatorApp, authenticatorAppResult, verifyTwoFactorAuth, logoutHandler, dashboardHandler
 };

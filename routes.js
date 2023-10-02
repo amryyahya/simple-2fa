@@ -1,5 +1,5 @@
 const {
-    loginViewHandler, registerViewHandler, registerHandler, loginHandler, authenticatorApp, authenticatorAppResult, verifyTwoFactorAuth
+    loginViewHandler, registerViewHandler, registerHandler, loginHandler, authenticatorApp, authenticatorAppResult, verifyTwoFactorAuth, logoutHandler, dashboardHandler
   } = require('./handler');
 
 const routes = [
@@ -20,13 +20,25 @@ const routes = [
     },
     {
         method: 'GET',
+        path: '/dashboard',
+        handler: dashboardHandler
+    },
+    {
+        method: 'GET',
         path: '/login',
         handler: loginViewHandler,
     },
+    
     {
         method: 'POST',
         path: '/login',
         handler: loginHandler,
+        options: {
+            state: {
+                parse: true,
+                failAction: 'error'
+            }
+        }
     },
     {
         method: 'GET',
@@ -38,6 +50,11 @@ const routes = [
         path: '/register',
         handler: registerHandler,
     },
+    {
+        method: 'GET',
+        path: '/logout',
+        handler: logoutHandler
+    }
 ]
 
 module.exports = routes;

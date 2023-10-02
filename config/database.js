@@ -22,6 +22,13 @@ const User = simple_2fa_db.define("user", {
             msg: 'email used'
         }
     },
+    phone_number: {
+        type: DataTypes.STRING,
+        unique: {
+            args: true,
+            msg: 'noHP used'
+        }
+    },
     password: DataTypes.STRING,
     secret_key: DataTypes.STRING,
 });
