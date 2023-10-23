@@ -3,6 +3,7 @@ const { nanoid } = require('nanoid');
 const crypto = require('crypto');
 const { generateTOTP } = require('./totp')
 const jwt = require('jsonwebtoken');
+require('dotenv').config();
 
 // this two function is actually used as authenticator app in user smartphone, but for praprosal fasteness i made it as web app tool 
 const authenticatorApp = (request, h) => {
@@ -20,19 +21,22 @@ const verifyTwoFactorAuth = async (request, h) => {
     let data_payload={}
     jwt.verify(token, "AMRYYAHYA", (err, decoded) => {
         if (err) {
-            console.error('Token verification failed:', err);
+            return "login error"
         } else {
-            console.log('Decoded Token:');
             data_payload=decoded
         }
     });
     const user = await User.findByPk(data_payload.user_id);
-    if (otp===generateTOTP(user.secret_key)) {
+    const encryptionKey = process.env.ENCRYPTION_SECRET_KEY; // Replace with your actual key
+    const iv = process.env.INITIAL_IV;
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(encryptionKey), iv);
+    let decrypted_secretKey = decipher.update(user.secret_key, 'hex', 'utf8');
+    decrypted_secretKey += decipher.final('utf8');
+    if (otp===generateTOTP(decrypted_secretKey)) {
         h.state('data', { id: user.id,email: user.email, password: user.password });
         return h.view('dashboard',{user_email: user.email, user_number: user.phone_number})
     }
     else return '<h1>unauthorized</h1>'
-
 }
 
 const dashboardHandler = async (request, h) => {
@@ -85,13 +89,18 @@ const registerHandler = async (request, h) => {
         email,phone_number, password
     } = request.payload;
     const secret_key = nanoid(32);
+    const encryptionKey = process.env.ENCRYPTION_SECRET_KEY; 
+    const iv = process.env.INITIAL_IV;
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(encryptionKey), iv);
+    let encryptedSecretKey = cipher.update(secret_key, 'utf8', 'hex');
+    encryptedSecretKey += cipher.final('hex');
     const hashedPassword = crypto.createHash('md5').update(password).digest('hex');
     try {
         const user = await User.create({
             email: email,
             phone_number: phone_number,
             password: hashedPassword,
-            secret_key: secret_key,
+            secret_key: encryptedSecretKey,
         });
         if (user) return `<p>You've registered</p><br><p>your secret key: "${secret_key}". save this this is needed to generate totp</p><br><a href="/login"> Login </a>`
     } catch (error) {
